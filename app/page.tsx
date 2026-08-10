@@ -1,16 +1,19 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from './supabase';
-import { Calendar, MapPin, Users, LogOut, Plus, Clock, MailCheck } from 'lucide-react';
+import { Calendar, MapPin, Users, LogOut, Plus, Clock, Lock, Mail, User } from 'lucide-react';
 
 export default function BaithakWeb() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   
   // Auth State
+  const [isSignUp, setIsSignUp] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [step, setStep] = useState(1); // 1: Input, 2: Check Email, 3: Logged In
+  const [password, setPassword] = useState('');
+  
+  const [step, setStep] = useState(1); // 1: Auth Screen, 2: Logged In Dashboard
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -23,12 +26,12 @@ export default function BaithakWeb() {
   const [date, setDate] = useState('');
   const [inviteeEmail, setInviteeEmail] = useState('');
 
-  // 1. Session Listener (Catches the Magic Link redirect)
+  // 1. Session Listener
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         setSession(session);
-        setStep(3);
+        setStep(2);
         fetchDashboardData(session.user);
       }
     });
@@ -36,7 +39,7 @@ export default function BaithakWeb() {
     supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session) {
-        setStep(3);
+        setStep(2);
         fetchDashboardData(session.user);
       } else {
         setStep(1);
@@ -68,26 +71,39 @@ export default function BaithakWeb() {
     if (invitesData) setMyInvites(invitesData);
   };
 
-  // 3. Auth Action - Send Magic Link
-  const handleSendMagicLink = async () => {
+  // 3. Auth Actions - Sign Up & Sign In
+  const handleAuth = async (e) => {
+    e.preventDefault();
     setIsLoading(true);
     setError('');
-    
-    // Uses the standard Magic Link flow
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email,
-      options: {
-        data: { name: name },
-        // Important: Redirect back to your Vercel URL after they click the email
-        emailRedirectTo: window.location.origin 
+
+    if (isSignUp) {
+      // Create new account
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { name: name } // Passes to your SQL trigger to create the profile
+        }
+      });
+      
+      if (signUpError) {
+        setError(signUpError.message);
+      } else if (data.session) {
+        setStep(2); // Instantly log in if email confirmation is disabled
       }
-    });
-    
-    if (error) {
-      setError(error.message);
     } else {
-      setStep(2); // Show the "Check your email" screen
+      // Log into existing account
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (signInError) {
+        setError("Invalid email or password.");
+      }
     }
+    
     setIsLoading(false);
   };
 
@@ -128,8 +144,8 @@ export default function BaithakWeb() {
 
   // --- RENDER LOGIC ---
 
-  // Dashboard View (Step 3)
-  if (step === 3 && profile) {
+  // Dashboard View (Step 2)
+  if (step === 2 && profile) {
     return (
       <div className="max-w-5xl mx-auto p-6">
         <header className="flex justify-between items-center mb-10 pb-6 border-b border-gray-200 mt-6">
@@ -236,36 +252,62 @@ export default function BaithakWeb() {
     );
   }
 
-  // Auth UI (Steps 1 & 2)
+  // Auth UI (Step 1)
   return (
-    <div className="flex items-center justify-center min-h-screen p-4">
-      <div className="w-full max-w-md bg-white p-8 rounded-xl shadow-sm border border-gray-100 text-center">
-        <h2 className="text-2xl font-bold mb-6 text-indigo-900">Log in to Baithak</h2>
+    <div className="flex items-center justify-center min-h-screen p-4 bg-gray-50">
+      <div className="w-full max-w-md bg-white p-8 rounded-xl shadow-sm border border-gray-200">
+        <h2 className="text-2xl font-bold mb-6 text-center text-indigo-900">
+          {isSignUp ? 'Create a Baithak Account' : 'Log in to Baithak'}
+        </h2>
         
-        {step === 1 ? (
-          <div className="space-y-4 text-left">
+        <form onSubmit={handleAuth} className="space-y-4">
+          
+          {/* Only show Name field on Sign Up */}
+          {isSignUp && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Your Full Name</label>
-              <input type="text" placeholder="e.g., Sol" value={name} onChange={(e) => setName(e.target.value)} className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              <div className="relative">
+                <User size={18} className="absolute left-3 top-3 text-gray-400" />
+                <input required type="text" placeholder="e.g., Sol Songlap" value={name} onChange={(e) => setName(e.target.value)} className="w-full pl-10 p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
-              <input type="email" placeholder="sol@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+            <div className="relative">
+              <Mail size={18} className="absolute left-3 top-3 text-gray-400" />
+              <input required type="email" placeholder="sol@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full pl-10 p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
             </div>
-            <button onClick={handleSendMagicLink} disabled={isLoading || !name || !email.includes('@')} className="w-full bg-indigo-600 text-white p-3 rounded-lg font-medium hover:bg-indigo-700 disabled:bg-indigo-300 transition-colors">
-              {isLoading ? 'Sending Link...' : 'Send Login Link'}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <div className="relative">
+              <Lock size={18} className="absolute left-3 top-3 text-gray-400" />
+              <input required type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} minLength={6} className="w-full pl-10 p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+          </div>
+
+          <button disabled={isLoading} type="submit" className="w-full bg-indigo-600 text-white p-3 rounded-lg font-medium hover:bg-indigo-700 disabled:bg-indigo-300 transition-colors mt-2">
+            {isLoading ? 'Processing...' : isSignUp ? 'Sign Up' : 'Log In'}
+          </button>
+        </form>
+
+        {error && <p className="text-red-500 text-sm mt-4 text-center bg-red-50 p-2 rounded">{error}</p>}
+
+        <div className="mt-6 text-center">
+          <p className="text-sm text-gray-600">
+            {isSignUp ? 'Already have an account?' : "Don't have an account?"}
+            <button 
+              onClick={() => { setIsSignUp(!isSignUp); setError(''); }}
+              className="ml-1 text-indigo-600 font-semibold hover:underline"
+            >
+              {isSignUp ? 'Log In' : 'Sign Up'}
             </button>
-          </div>
-        ) : (
-          <div className="space-y-4 flex flex-col items-center">
-            <MailCheck size={48} className="text-green-500 mb-2" />
-            <h3 className="text-xl font-bold text-gray-900">Check Your Email</h3>
-            <p className="text-gray-600">We sent a secure login link to <strong>{email}</strong>. Click it to access your dashboard.</p>
-            <p className="text-sm text-gray-500 mt-4">You can safely close this window.</p>
-          </div>
-        )}
-        
-        {error && <p className="text-red-500 text-sm mt-4 bg-red-50 p-2 rounded">{error}</p>}
+          </p>
+        </div>
+
       </div>
     </div>
   );
