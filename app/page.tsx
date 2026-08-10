@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from './supabase';
-import { Calendar, MapPin, Users, LogOut, Plus, Clock } from 'lucide-react';
+import { Calendar, MapPin, Users, LogOut, Plus, Clock, MailCheck } from 'lucide-react';
 
 export default function BaithakWeb() {
   const [session, setSession] = useState(null);
@@ -10,8 +10,7 @@ export default function BaithakWeb() {
   // Auth State
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [otp, setOtp] = useState('');
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(1); // 1: Input, 2: Check Email, 3: Logged In
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -24,7 +23,7 @@ export default function BaithakWeb() {
   const [date, setDate] = useState('');
   const [inviteeEmail, setInviteeEmail] = useState('');
 
-  // 1. Session Listener
+  // 1. Session Listener (Catches the Magic Link redirect)
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
@@ -46,9 +45,8 @@ export default function BaithakWeb() {
     });
   }, []);
 
-  // 2. Fetch Data (Triggered on login)
+  // 2. Fetch Data
   const fetchDashboardData = async (user) => {
-    // Get User Profile
     const { data: profileData } = await supabase
       .from('profiles')
       .select('*')
@@ -56,7 +54,6 @@ export default function BaithakWeb() {
       .single();
     if (profileData) setProfile(profileData);
 
-    // Get Baithaks you are hosting
     const { data: baithaksData } = await supabase
       .from('baithaks')
       .select('*, baithak_invites(invited_email, status)')
@@ -64,7 +61,6 @@ export default function BaithakWeb() {
       .order('scheduled_at', { ascending: true });
     if (baithaksData) setMyBaithaks(baithaksData);
 
-    // Get your incoming invitations
     const { data: invitesData } = await supabase
       .from('baithak_invites')
       .select('*, baithaks(restaurant_name, scheduled_at, profiles(full_name))')
@@ -72,28 +68,26 @@ export default function BaithakWeb() {
     if (invitesData) setMyInvites(invitesData);
   };
 
-  // 3. Auth Actions
-  const handleSendOtp = async () => {
+  // 3. Auth Action - Send Magic Link
+  const handleSendMagicLink = async () => {
     setIsLoading(true);
     setError('');
+    
+    // Uses the standard Magic Link flow
     const { error } = await supabase.auth.signInWithOtp({
       email: email,
-      options: { data: { name: name } }
+      options: {
+        data: { name: name },
+        // Important: Redirect back to your Vercel URL after they click the email
+        emailRedirectTo: window.location.origin 
+      }
     });
-    if (error) setError(error.message);
-    else setStep(2);
-    setIsLoading(false);
-  };
-
-  const handleVerifyOtp = async () => {
-    setIsLoading(true);
-    setError('');
-    const { error } = await supabase.auth.verifyOtp({
-      email: email,
-      token: otp,
-      type: 'email'
-    });
-    if (error) setError("Invalid code. Please try again.");
+    
+    if (error) {
+      setError(error.message);
+    } else {
+      setStep(2); // Show the "Check your email" screen
+    }
     setIsLoading(false);
   };
 
@@ -102,14 +96,9 @@ export default function BaithakWeb() {
     e.preventDefault();
     setIsLoading(true);
     
-    // Insert Baithak
     const { data: newBaithak, error: bError } = await supabase
       .from('baithaks')
-      .insert([{ 
-        host_id: session.user.id, 
-        restaurant_name: restaurant, 
-        scheduled_at: date 
-      }])
+      .insert([{ host_id: session.user.id, restaurant_name: restaurant, scheduled_at: date }])
       .select()
       .single();
 
@@ -119,17 +108,12 @@ export default function BaithakWeb() {
       return;
     }
 
-    // Insert Invite if an email was provided
     if (inviteeEmail) {
       await supabase
         .from('baithak_invites')
-        .insert([{
-          baithak_id: newBaithak.id,
-          invited_email: inviteeEmail
-        }]);
+        .insert([{ baithak_id: newBaithak.id, invited_email: inviteeEmail }]);
     }
 
-    // Reset form and refresh dashboard
     setRestaurant('');
     setDate('');
     setInviteeEmail('');
@@ -138,16 +122,13 @@ export default function BaithakWeb() {
   };
 
   const updateInviteStatus = async (inviteId, newStatus) => {
-    await supabase
-      .from('baithak_invites')
-      .update({ status: newStatus })
-      .eq('id', inviteId);
+    await supabase.from('baithak_invites').update({ status: newStatus }).eq('id', inviteId);
     fetchDashboardData(session.user);
   };
 
   // --- RENDER LOGIC ---
 
-  // Dashboard View
+  // Dashboard View (Step 3)
   if (step === 3 && profile) {
     return (
       <div className="max-w-5xl mx-auto p-6">
@@ -162,8 +143,7 @@ export default function BaithakWeb() {
         </header>
 
         <div className="grid md:grid-cols-2 gap-10">
-          
-          {/* Column 1: Create Form */}
+          {/* Create Form */}
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-fit">
             <h2 className="text-xl font-bold mb-4 flex items-center">
               <Plus className="mr-2 text-indigo-600" /> Plan a Baithak
@@ -196,10 +176,8 @@ export default function BaithakWeb() {
             </form>
           </div>
 
-          {/* Column 2: Activity Feed */}
+          {/* Activity Feed */}
           <div className="space-y-8">
-            
-            {/* Incoming Invites */}
             <div>
               <h2 className="text-xl font-bold mb-4 flex items-center">
                 <Clock className="mr-2 text-indigo-600" /> My Invitations
@@ -212,7 +190,6 @@ export default function BaithakWeb() {
                     <div key={invite.id} className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
                       <h3 className="font-bold text-gray-900">{invite.baithaks.restaurant_name}</h3>
                       <p className="text-sm text-gray-500 mb-3">Host: {invite.baithaks.profiles.full_name} • {new Date(invite.baithaks.scheduled_at).toLocaleString()}</p>
-                      
                       {invite.status === 'pending' ? (
                         <div className="flex gap-2">
                           <button onClick={() => updateInviteStatus(invite.id, 'accepted')} className="px-4 py-2 bg-green-100 text-green-700 text-sm rounded-md font-medium hover:bg-green-200">Accept</button>
@@ -229,7 +206,6 @@ export default function BaithakWeb() {
               )}
             </div>
 
-            {/* My Hosted Events */}
             <div>
               <h2 className="text-xl font-bold mb-4">Hosted by Me</h2>
               {myBaithaks.length === 0 ? (
@@ -254,7 +230,6 @@ export default function BaithakWeb() {
                 </div>
               )}
             </div>
-            
           </div>
         </div>
       </div>
@@ -264,11 +239,11 @@ export default function BaithakWeb() {
   // Auth UI (Steps 1 & 2)
   return (
     <div className="flex items-center justify-center min-h-screen p-4">
-      <div className="w-full max-w-md bg-white p-8 rounded-xl shadow-sm border border-gray-100">
-        <h2 className="text-2xl font-bold text-center mb-6 text-indigo-900">Log in to Baithak</h2>
+      <div className="w-full max-w-md bg-white p-8 rounded-xl shadow-sm border border-gray-100 text-center">
+        <h2 className="text-2xl font-bold mb-6 text-indigo-900">Log in to Baithak</h2>
         
         {step === 1 ? (
-          <div className="space-y-4">
+          <div className="space-y-4 text-left">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Your Full Name</label>
               <input type="text" placeholder="e.g., Sol" value={name} onChange={(e) => setName(e.target.value)} className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
@@ -277,25 +252,20 @@ export default function BaithakWeb() {
               <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
               <input type="email" placeholder="sol@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
             </div>
-            <button onClick={handleSendOtp} disabled={isLoading || !name || !email.includes('@')} className="w-full bg-indigo-600 text-white p-3 rounded-lg font-medium hover:bg-indigo-700 disabled:bg-indigo-300 transition-colors">
-              {isLoading ? 'Sending...' : 'Send Login Code'}
+            <button onClick={handleSendMagicLink} disabled={isLoading || !name || !email.includes('@')} className="w-full bg-indigo-600 text-white p-3 rounded-lg font-medium hover:bg-indigo-700 disabled:bg-indigo-300 transition-colors">
+              {isLoading ? 'Sending Link...' : 'Send Login Link'}
             </button>
           </div>
         ) : (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Check Your Email</label>
-              <input type="text" placeholder="Enter 6-Digit Code" value={otp} onChange={(e) => setOtp(e.target.value)} className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-center tracking-widest text-lg" />
-            </div>
-            <button onClick={handleVerifyOtp} disabled={isLoading || otp.length < 6} className="w-full bg-green-600 text-white p-3 rounded-lg font-medium hover:bg-green-700 disabled:bg-green-300 transition-colors">
-              {isLoading ? 'Verifying...' : 'Log into Baithak'}
-            </button>
-            <button onClick={() => setStep(1)} className="w-full text-sm text-gray-500 hover:text-indigo-600 mt-2">
-              Back to email input
-            </button>
+          <div className="space-y-4 flex flex-col items-center">
+            <MailCheck size={48} className="text-green-500 mb-2" />
+            <h3 className="text-xl font-bold text-gray-900">Check Your Email</h3>
+            <p className="text-gray-600">We sent a secure login link to <strong>{email}</strong>. Click it to access your dashboard.</p>
+            <p className="text-sm text-gray-500 mt-4">You can safely close this window.</p>
           </div>
         )}
-        {error && <p className="text-red-500 text-sm mt-4 text-center bg-red-50 p-2 rounded">{error}</p>}
+        
+        {error && <p className="text-red-500 text-sm mt-4 bg-red-50 p-2 rounded">{error}</p>}
       </div>
     </div>
   );
