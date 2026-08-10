@@ -1,6 +1,8 @@
 import './globals.css';
 import NavBar from '../components/NavBar';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata = {
   title: 'Baithak | Track Food, Schedule Adda',
   description:
