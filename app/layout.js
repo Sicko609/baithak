@@ -1,21 +1,23 @@
-import './globals.css';
-import NavBar from '../components/NavBar';
-
-export const dynamic = 'force-dynamic';
+import "./globals.css";
 
 export const metadata = {
-  title: 'Baithak | Track Food, Schedule Adda',
-  description:
-    'The ultimate food and social map for Bangladesh — track restaurants, rate deshi food, and schedule adda with friends.',
+  title: "Baithak | Track Food, Schedule Adda",
+  description: "The ultimate food and social map for Bangladesh.",
 };
 
-export default function RootLayout({ children }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en">
-      <body className="bg-juteBg text-gray-800">
-        <NavBar />
-        {children}
-      </body>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;600;700&display=swap" rel="stylesheet" />
+      </head>
+      <body>{children}</body>
     </html>
   );
 }
